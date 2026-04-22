@@ -1280,8 +1280,36 @@
         }
       }
 
+      var diagnosticoApiUrl = "http://localhost:3001/api/diagnostico";
+
+      function normalizePhoneNumber(telefone) {
+        var digits = telefone.replace(/\D/g, "");
+        if (!digits) {
+          return "";
+        }
+        if (digits.slice(0, 2) === "55") {
+          return digits;
+        }
+        return "55" + digits;
+      }
+
+      async function sendDiagnosticoToWebhook(payload) {
+        var response = await fetch(diagnosticoApiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          var errorText = await response.text();
+          throw new Error(errorText || "Falha ao enviar diagnóstico");
+        }
+      }
+
       // ===== FORM SUBMIT =====
-      function submitForm() {
+      async function submitForm() {
         var nome = document.getElementById("nome").value.trim();
         var telefone = document.getElementById("telefone").value.trim();
         var cidade = document.getElementById("cidade").value.trim();
@@ -1312,27 +1340,55 @@
             : dificuldade;
 
         var instagramTexto = instagram || "Não informado";
+        var phoneNumber = normalizePhoneNumber(telefone);
+        var submitButton = document.querySelector(".submit-btn");
 
-        // Build WhatsApp link
-        var numero = "5531984966700";
-        var mensagem = encodeURIComponent(
-          "Olá! Vim da página de diagnóstico para bares e gostaria de furar a fila para fazer meu diagnóstico o quanto antes.\n\n" +
-            "Meu nome é: " +
-            nome +
-            "\n" +
-            "Meu bar fica em: " +
-            cidade +
-            "\n" +
-            "Instagram do bar: " +
-            instagramTexto,
-        );
-        var whatsappUrl = "https://wa.me/" + numero + "?text=" + mensagem;
+        if (!phoneNumber) {
+          shakeField("telefone");
+          return;
+        }
 
-        document.getElementById("whatsappLink").href = whatsappUrl;
+        var payload = {
+          phoneNumber: phoneNumber,
+          username: nome,
+          variables: {
+            cidade: cidade,
+            instagram: instagramTexto,
+            maior_dificuldade: dificuldadeTexto,
+          },
+        };
 
-        // Show thank you
-        document.getElementById("formView").style.display = "none";
-        document.getElementById("thankyouView").classList.add("visible");
+        if (submitButton) {
+          submitButton.disabled = true;
+        }
+
+        try {
+          await sendDiagnosticoToWebhook(payload);
+
+          var numero = "5531984966700";
+          var mensagem = encodeURIComponent(
+            "Olá! Vim da página de diagnóstico para bares e gostaria de furar a fila para fazer meu diagnóstico o quanto antes.\n\n" +
+              "Meu nome é: " +
+              nome +
+              "\n" +
+              "Meu bar fica em: " +
+              cidade +
+              "\n" +
+              "Instagram do bar: " +
+              instagramTexto,
+          );
+          var whatsappUrl = "https://wa.me/" + numero + "?text=" + mensagem;
+
+          document.getElementById("whatsappLink").href = whatsappUrl;
+          document.getElementById("formView").style.display = "none";
+          document.getElementById("thankyouView").classList.add("visible");
+        } catch (error) {
+          alert("Não foi possível enviar seus dados agora. Tente novamente em instantes.");
+        } finally {
+          if (submitButton) {
+            submitButton.disabled = false;
+          }
+        }
       }
 
       function shakeField(id) {
